@@ -1,4 +1,4 @@
-# Implementação recursiva do Merge Sort em RISC-V
+# Implementação iterativa do Merge Sort em RISC-V
 # Otimizado para uso eficiente de cache (localidade espacial)
 # Array de 8 elementos
 
@@ -23,11 +23,11 @@ main:
     li a1, 8
     jal print_array
     
-    # Chama o merge sort
+    # Chama o merge sort iterativo
     la a0, array        # Endereço do array
-    li a1, 0            # Índice inicial
-    li a2, 7            # Índice final (tamanho - 1)
-    jal merge_sort
+    la a1, temp         # Endereço do array temporário
+    li a2, 8            # Tamanho do array
+    jal merge_sort_iterative
     
     # Imprime o array ordenado
     la a0, msg_sort
@@ -42,70 +42,98 @@ main:
     li a7, 10
     ecall
 
-# Função merge_sort recursiva
+# Função merge_sort_iterative
 # a0 = endereço do array
-# a1 = índice inicial
-# a2 = índice final
-merge_sort:
-    # Verifica se o índice inicial é menor que o índice final
-    # (caso base da recursão)
-    bge a1, a2, merge_sort_done
-    
+# a1 = endereço do array temporário
+# a2 = tamanho do array
+merge_sort_iterative:
     # Salva registradores na pilha
-    addi sp, sp, -20
+    addi sp, sp, -24
     sw ra, 0(sp)
     sw s0, 4(sp)
     sw s1, 8(sp)
     sw s2, 12(sp)
     sw s3, 16(sp)
+    sw s4, 20(sp)
     
     # Inicializa registradores
     mv s0, a0       # s0 = endereço do array
-    mv s1, a1       # s1 = índice inicial
-    mv s2, a2       # s2 = índice final
+    mv s1, a1       # s1 = endereço do array temporário
+    mv s2, a2       # s2 = tamanho do array
     
-    # Calcula o índice do meio
-    add s3, s1, s2
-    srai s3, s3, 1  # s3 = (início + fim) / 2
+    # Implementação iterativa do Merge Sort
+    # Começa com subarrays de tamanho 1 e vai dobrando
+    li s3, 1        # s3 = tamanho atual do subarray
     
-    # Chama merge_sort para a primeira metade
-    mv a0, s0
-    mv a1, s1
-    mv a2, s3
-    jal merge_sort
+merge_sort_outer_loop:
+    # Verifica se o tamanho atual do subarray é maior ou igual ao tamanho do array
+    bge s3, s2, merge_sort_done
     
-    # Chama merge_sort para a segunda metade
-    mv a0, s0
-    addi a1, s3, 1
-    mv a2, s2
-    jal merge_sort
+    # Percorre o array em blocos de tamanho s3*2
+    li s4, 0        # s4 = índice inicial
     
-    # Chama merge para mesclar as duas metades
-    mv a0, s0
-    mv a1, s1
-    mv a2, s3
-    mv a3, s2
+merge_sort_inner_loop:
+    # Verifica se já processamos todo o array
+    bge s4, s2, merge_sort_inner_done
+    
+    # Calcula o meio e o fim do bloco atual
+    add t0, s4, s3      # t0 = meio (início + tamanho)
+    add t1, t0, s3      # t1 = fim (meio + tamanho)
+    
+    # Ajusta o meio se for maior que o tamanho do array
+    blt t0, s2, skip_mid_adjust
+    mv t0, s2
+skip_mid_adjust:
+    
+    # Ajusta o fim se for maior que o tamanho do array
+    blt t1, s2, skip_end_adjust
+    mv t1, s2
+skip_end_adjust:
+    
+    # Verifica se há algo para mesclar (meio < fim)
+    bge t0, t1, skip_merge
+    
+    # Chama a função merge para mesclar os subarrays
+    mv a0, s0       # a0 = endereço do array
+    mv a1, s1       # a1 = endereço do array temporário
+    mv a2, s4       # a2 = início
+    addi a3, t0, -1 # a3 = meio - 1
+    addi a4, t1, -1 # a4 = fim - 1
     jal merge
     
+skip_merge:
+    # Atualiza o índice para o próximo bloco
+    add s4, s4, s3
+    add s4, s4, s3
+    
+    j merge_sort_inner_loop
+    
+merge_sort_inner_done:
+    # Dobra o tamanho do subarray para a próxima iteração
+    slli s3, s3, 1
+    j merge_sort_outer_loop
+    
+merge_sort_done:
     # Restaura registradores da pilha
     lw ra, 0(sp)
     lw s0, 4(sp)
     lw s1, 8(sp)
     lw s2, 12(sp)
     lw s3, 16(sp)
-    addi sp, sp, 20
+    lw s4, 20(sp)
+    addi sp, sp, 24
     
-merge_sort_done:
     ret
 
 # Função merge para mesclar dois subarrays
 # a0 = endereço do array
-# a1 = início
-# a2 = meio
-# a3 = fim
+# a1 = endereço do array temporário
+# a2 = início
+# a3 = meio
+# a4 = fim
 merge:
     # Salva registradores na pilha
-    addi sp, sp, -32
+    addi sp, sp, -28
     sw ra, 0(sp)
     sw s0, 4(sp)
     sw s1, 8(sp)
@@ -113,34 +141,25 @@ merge:
     sw s3, 16(sp)
     sw s4, 20(sp)
     sw s5, 24(sp)
-    sw s6, 28(sp)
     
     # Inicializa registradores
     mv s0, a0       # s0 = endereço do array
-    mv s1, a1       # s1 = início
-    mv s2, a2       # s2 = meio
-    mv s3, a3       # s3 = fim
-    
-    # Calcula o tamanho do array temporário
-    sub s4, s3, s1
-    addi s4, s4, 1  # s4 = tamanho do array temporário
-    
-    # Aloca espaço para o array temporário na pilha
-    slli s5, s4, 2  # s5 = tamanho * 4 (bytes)
-    sub sp, sp, s5  # Aloca espaço na pilha
-    mv s6, sp       # s6 = endereço do array temporário
+    mv s1, a1       # s1 = endereço do array temporário
+    mv s2, a2       # s2 = início
+    mv s3, a3       # s3 = meio
+    mv s4, a4       # s4 = fim
     
     # Inicializa índices para o merge
-    mv t0, s1       # t0 = índice para o primeiro subarray
-    addi t1, s2, 1  # t1 = índice para o segundo subarray
-    li t2, 0        # t2 = índice para o array temporário
+    mv t0, s2       # t0 = índice para o primeiro subarray
+    addi t1, s3, 1  # t1 = índice para o segundo subarray (meio + 1)
+    mv t2, s2       # t2 = índice para o array temporário (começando do início)
     
 merge_loop:
     # Verifica se já processamos todo o primeiro subarray
-    bgt t0, s2, copy_remaining_second
+    bgt t0, s3, copy_remaining_second
     
     # Verifica se já processamos todo o segundo subarray
-    bgt t1, s3, copy_remaining_first
+    bgt t1, s4, copy_remaining_first
     
     # Calcula os endereços dos elementos nos subarrays
     slli t3, t0, 2      # t3 = t0 * 4
@@ -156,7 +175,7 @@ merge_loop:
     
     # Escolhe o elemento do primeiro subarray
     slli t3, t2, 2      # t3 = t2 * 4
-    add t3, s6, t3      # t3 = endereço no array temporário
+    add t3, s1, t3      # t3 = endereço no array temporário
     sw t4, 0(t3)        # Armazena o valor no array temporário
     
     addi t0, t0, 1      # Incrementa o índice do primeiro subarray
@@ -165,7 +184,7 @@ merge_loop:
 choose_second:
     # Escolhe o elemento do segundo subarray
     slli t3, t2, 2      # t3 = t2 * 4
-    add t3, s6, t3      # t3 = endereço no array temporário
+    add t3, s1, t3      # t3 = endereço no array temporário
     sw t5, 0(t3)        # Armazena o valor no array temporário
     
     addi t1, t1, 1      # Incrementa o índice do segundo subarray
@@ -176,14 +195,14 @@ next_element:
     
 copy_remaining_first:
     # Copia os elementos restantes do primeiro subarray
-    bgt t0, s2, copy_back
+    bgt t0, s3, copy_back
     
     slli t3, t0, 2      # t3 = t0 * 4
     add t3, s0, t3      # t3 = endereço do elemento no primeiro subarray
     lw t4, 0(t3)        # t4 = valor do elemento no primeiro subarray
     
     slli t3, t2, 2      # t3 = t2 * 4
-    add t3, s6, t3      # t3 = endereço no array temporário
+    add t3, s1, t3      # t3 = endereço no array temporário
     sw t4, 0(t3)        # Armazena o valor no array temporário
     
     addi t0, t0, 1      # Incrementa o índice do primeiro subarray
@@ -192,14 +211,14 @@ copy_remaining_first:
     
 copy_remaining_second:
     # Copia os elementos restantes do segundo subarray
-    bgt t1, s3, copy_back
+    bgt t1, s4, copy_back
     
     slli t3, t1, 2      # t3 = t1 * 4
     add t3, s0, t3      # t3 = endereço do elemento no segundo subarray
     lw t4, 0(t3)        # t4 = valor do elemento no segundo subarray
     
     slli t3, t2, 2      # t3 = t2 * 4
-    add t3, s6, t3      # t3 = endereço no array temporário
+    add t3, s1, t3      # t3 = endereço no array temporário
     sw t4, 0(t3)        # Armazena o valor no array temporário
     
     addi t1, t1, 1      # Incrementa o índice do segundo subarray
@@ -208,29 +227,27 @@ copy_remaining_second:
     
 copy_back:
     # Copia os elementos do array temporário de volta para o array original
-    li t0, 0            # t0 = contador
+    mv t0, s2       # t0 = índice inicial
     
 copy_back_loop:
-    bge t0, t2, merge_done
+    bgt t0, s4, merge_done
     
     # Calcula o endereço no array temporário
-    slli t3, t0, 2      # t3 = t0 * 4
-    add t3, s6, t3      # t3 = endereço no array temporário
+    sub t3, t0, s2      # t3 = deslocamento relativo ao início
+    add t3, s2, t3      # t3 = índice no array temporário
+    slli t3, t3, 2      # t3 = t3 * 4
+    add t3, s1, t3      # t3 = endereço no array temporário
     lw t4, 0(t3)        # t4 = valor do elemento no array temporário
     
     # Calcula o endereço no array original
-    add t5, s1, t0      # t5 = índice no array original
-    slli t3, t5, 2      # t3 = t5 * 4
+    slli t3, t0, 2      # t3 = t0 * 4
     add t3, s0, t3      # t3 = endereço no array original
     sw t4, 0(t3)        # Armazena o valor no array original
     
-    addi t0, t0, 1      # Incrementa o contador
+    addi t0, t0, 1      # Incrementa o índice
     j copy_back_loop
     
 merge_done:
-    # Libera o espaço do array temporário
-    add sp, sp, s5      # Libera espaço na pilha
-    
     # Restaura registradores da pilha
     lw ra, 0(sp)
     lw s0, 4(sp)
@@ -239,8 +256,7 @@ merge_done:
     lw s3, 16(sp)
     lw s4, 20(sp)
     lw s5, 24(sp)
-    lw s6, 28(sp)
-    addi sp, sp, 32
+    addi sp, sp, 28
     
     ret
 
